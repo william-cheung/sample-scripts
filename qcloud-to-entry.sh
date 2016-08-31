@@ -23,30 +23,48 @@ DATA_LDIR=$DIST_ROOT/status
 #     Shell variables used MUST have been exported
 #     $(pwd) = $(DATA_LDIR) && [[ -d data-downloading ]] && [[ -d data-sending]]  
 
-formatted_date() {
-  echo '['$(date '+%Y-%m-%d %H-%M-%S')']'
+log_info() {
+  echo '['$(date '+%Y-%m-%d %H-%M-%S')']' $@
 }
 
 resume_downloading() {
-  echo $(formatted_date) 'start downloading' $1
+  log_info 'Start downloading' $1
+  
   wget -q $DATA_ROOT/$1 -P data-downloading
-  echo $(formatted_date) 'downloading' $1 'completed'
+  
+  if [[ ! -f data-downloading/$1 ]]; then
+    log_info 'No such file or directory:' $DATA_ROOT/$1
+  	return
+  fi
+  
+  log_info 'Downloading' $1 'completed'
+  
   mv data-downloading/$1 data-sending/ 
 }
 
 send_data_to_entry() {
-  echo $(formatted_date) 'start sending' $1
-  cat data-sending/$1 \
-    | awk -f $SCRPT_DIR/formatter.awk \
-    | $DIST_ROOT/bin/xurl
-  echo $(formatted_date) 'sending' $1 'completed' 
-  rm -vf data-sending/$1
+  local data_file=data-sending/$1
+  if [[ ! -f $data_file ]]; then
+    return
+  fi
+
+  log_info 'Start sending' $data_file
+  cat $data_file \
+    | awk --posix -f $SCRPT_DIR/formatter.awk \
+    | $DIST_ROOT/bin/url2entry $DIST_ROOT/conf/tencent/qcloud-to-entry.conf
+  log_info 'Sending' $data_file 'completed' 
+  rm -f $data_file
+  log_info 'Removed' $data_file
 }
 
 download_and_send() {
+  if [[ -z $(ls data-downloading) ]]; then
+    return
+  fi
+
   ls data-downloading \
     | xargs -n 1 -P $MAX_PROCS sh -c \
-        'rm data-downloading/"$@" && resume_downloading "$@" && send_data_to_entry "$@"' _
+        'rm data-downloading/"$@"; resume_downloading "$@"; send_data_to_entry "$@"' _
 }
 
 
@@ -58,7 +76,7 @@ export DIST_ROOT=$DIST_ROOT
 export SCRPT_DIR=$SCRPT_DIR
 export MAX_PROCS=$MAX_PROCS
 
-export -f formatted_date
+export -f log_info
 export -f resume_downloading
 export -f send_data_to_entry
 
@@ -86,12 +104,17 @@ if [[ ! -f index.txt ]]; then
 fi
 
 mv index.txt index-old.txt
-cat index-old.txt | xargs -i rm -vf {}
-wget $DATA_ROOT/index.txt
+wget -q $DATA_ROOT/index.txt
+
+if [[ ! -f index.txt ]]; then
+  log_info 'Fatal error: failed to download' $DATA_ROOT/index.txt
+  exit 2
+fi
 
 diff index-old.txt index.txt \
   | grep '^> ' \
   | tr -d '> ' \
   | xargs -i touch data-downloading/{}
 
+# download and send new data files
 download_and_send
