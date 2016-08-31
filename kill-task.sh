@@ -20,3 +20,12 @@ function kill_pstree() {
 export -f kill_pstree
 
 kill_pstree $(pgrep $PROC_NAME)
+
+
+------------------------------------------------------------------------
+# %r for PGID
+
+ps x -o  "%p %r %c" 
+  | grep $PROC_NAME 
+  | awk '{print $2}'
+  | xargs -i kill -9 -- -{}
