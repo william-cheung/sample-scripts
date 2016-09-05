@@ -107,6 +107,7 @@ mv index.txt index-old.txt
 wget -q $DATA_ROOT/index.txt
 
 if [[ ! -f index.txt ]]; then
+  cp index-old.txt index.txt
   log_info 'Fatal error: failed to download' $DATA_ROOT/index.txt
   exit 2
 fi
